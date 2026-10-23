@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LCD Soundsystem, Jungle, Metronomy</title>
+<style>
+  body {
+    margin: 0;
+    padding: 22px 18px 48px 18px;
+    background: #35a6fd;
+    color: #000;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  h1 {
+    margin: 0 0 8px 0;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 28px;
+    font-weight: bold;
+    line-height: 1.2;
+  }
+  p {
+    margin: 0 0 14px 0;
+    font-size: 17px;
+    line-height: 1.4;
+    max-width: 36em;
+  }
+  svg.board {
+    display: block;
+    width: 100%;
+    max-width: 520px;
+    height: auto;
+    touch-action: none;
+    cursor: pointer;
+    background: transparent;
+  }
+  .readout {
+    margin: 8px 0 18px 0;
+    max-width: 520px;
+  }
+  .readout div {
+    font-size: 18px;
+    line-height: 1.5;
+  }
+  .box {
+    max-width: 520px;
+    background: #ffff00;
+    border: 4px solid #000080;
+    padding: 12px 14px 14px 14px;
+  }
+  .box p {
+    margin: 0 0 8px 0;
+  }
+  label {
+    display: block;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 6px;
+  }
+  input.link {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 15px;
+    padding: 6px;
+  }
+  button {
+    margin-top: 8px;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 16px;
+    padding: 6px 12px;
+    background: #ffffcc;
+    border: 2px solid #000080;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<h1>LCD Soundsystem, Jungle, Metronomy</h1>
+<p>Drag the dot inside the triangle. The address is the shareable link for that spot.</p>
+
+<svg id="board" class="board" viewBox="0 0 400 400" role="img" aria-label="A triangle. LCD Soundsystem, Jungle, and Metronomy are the three corners. Drag the dot to mix them.">
+  <polygon id="shape" points="200,48 28,346 372,346" fill="#ffffcc" stroke="#000080" stroke-width="4"></polygon>
+  <circle id="dot" cx="200" cy="246.7" r="14" fill="#ffff00" stroke="#000080" stroke-width="3"></circle>
+  <text x="200" y="32" text-anchor="middle" fill="#000080" font-family="Times New Roman, Times, serif" font-size="18" font-weight="bold">LCD Soundsystem</text>
+  <text x="28" y="372" text-anchor="start" fill="#9c2f23" font-family="Times New Roman, Times, serif" font-size="18" font-weight="bold">Jungle</text>
+  <text x="372" y="372" text-anchor="end" fill="#4b0082" font-family="Times New Roman, Times, serif" font-size="18" font-weight="bold">Metronomy</text>
+</svg>
+
+<div class="readout" aria-live="polite">
+  <div id="line-lcd" style="color:#000080"></div>
+  <div id="line-jungle" style="color:#9c2f23"></div>
+  <div id="line-metronomy" style="color:#4b0082"></div>
+</div>
+
+<div class="box">
+  <label for="share">Shareable link</label>
+  <p>Send this address. It opens with the dot in the same place.</p>
+  <input id="share" class="link" type="text" readonly>
+  <button id="copy" type="button">copy link</button>
+</div>
+
+<script>
+var A = { x: 200, y: 48 };
+var B = { x: 28, y: 346 };
+var C = { x: 372, y: 346 };
+var KEYS = ["lcd", "jungle", "metronomy"];
+var NAMES = ["LCD Soundsystem", "Jungle", "Metronomy"];
+
+var board = document.getElementById("board");
+var dot = document.getElementById("dot");
+var share = document.getElementById("share");
+var dragging = false;
+
+function closestOnSegment(p, a, b) {
+  var abx = b.x - a.x;
+  var aby = b.y - a.y;
+  var len2 = abx * abx + aby * aby;
+  var t = ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2;
+  if (t < 0) t = 0;
+  if (t > 1) t = 1;
+  return { x: a.x + abx * t, y: a.y + aby * t };
+}
+
+function barycentric(p) {
+  var v0x = B.x - A.x, v0y = B.y - A.y;
+  var v1x = C.x - A.x, v1y = C.y - A.y;
+  var v2x = p.x - A.x, v2y = p.y - A.y;
+  var den = v0x * v1y - v1x * v0y;
+  var v = (v2x * v1y - v1x * v2y) / den;
+  var w = (v0x * v2y - v2x * v0y) / den;
+  var u = 1 - v - w;
+  return [u, v, w];
+}
+
+function inside(weights) {
+  return weights[0] >= -0.0001 && weights[1] >= -0.0001 && weights[2] >= -0.0001;
+}
+
+function constrain(p) {
+  var weights = barycentric(p);
+  if (inside(weights)) return p;
+  var edges = [
+    closestOnSegment(p, B, C),
+    closestOnSegment(p, A, C),
+    closestOnSegment(p, A, B)
+  ];
+  var best = edges[0];
+  var bestD = distance2(p, best);
+  for (var i = 1; i < edges.length; i++) {
+    var d = distance2(p, edges[i]);
+    if (d < bestD) {
+      best = edges[i];
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+function distance2(p, q) {
+  var dx = p.x - q.x;
+  var dy = p.y - q.y;
+  return dx * dx + dy * dy;
+}
+
+function toPercents(weights) {
+  var raw = [weights[0] * 100, weights[1] * 100, weights[2] * 100];
+  var floors = [Math.floor(raw[0]), Math.floor(raw[1]), Math.floor(raw[2])];
+  var left = 100 - (floors[0] + floors[1] + floors[2]);
+  var order = [
+    { i: 0, frac: raw[0] - floors[0] },
+    { i: 1, frac: raw[1] - floors[1] },
+    { i: 2, frac: raw[2] - floors[2] }
+  ];
+  order.sort(function (a, b) { return b.frac - a.frac; });
+  var out = floors.slice();
+  for (var k = 0; k < left; k++) out[order[k].i] += 1;
+  return out;
+}
+
+function pointFromPercents(percents) {
+  return {
+    x: (percents[0] * A.x + percents[1] * B.x + percents[2] * C.x) / 100,
+    y: (percents[0] * A.y + percents[1] * B.y + percents[2] * C.y) / 100
+  };
+}
+
+function eventPoint(event) {
+  var pt = board.createSVGPoint();
+  pt.x = event.clientX;
+  pt.y = event.clientY;
+  var ctm = board.getScreenCTM();
+  if (!ctm) return { x: A.x, y: (A.y + B.y) / 2 };
+  return pt.matrixTransform(ctm.inverse());
+}
+
+function show(percents) {
+  var spot = pointFromPercents(percents);
+  dot.setAttribute("cx", spot.x.toFixed(2));
+  dot.setAttribute("cy", spot.y.toFixed(2));
+  for (var i = 0; i < 3; i++) {
+    document.getElementById("line-" + KEYS[i]).textContent = NAMES[i] + "  " + percents[i] + "%";
+  }
+  var params = new URLSearchParams();
+  for (var j = 0; j < 3; j++) params.set(KEYS[j], String(percents[j]));
+  var next = location.pathname + "?" + params.toString();
+  if (location.search !== "?" + params.toString()) {
+    history.replaceState(null, "", next);
+  }
+  share.value = location.href;
+}
+
+function placeFromPointer(event) {
+  var p = constrain(eventPoint(event));
+  show(toPercents(barycentric(p)));
+}
+
+function readMix() {
+  var q = new URLSearchParams(location.search);
+  var nums = [];
+  for (var i = 0; i < KEYS.length; i++) {
+    var raw = q.get(KEYS[i]);
+    if (raw === null || !/^\d{1,3}$/.test(raw)) return null;
+    nums.push(parseInt(raw, 10));
+  }
+  if (nums[0] + nums[1] + nums[2] !== 100) return null;
+  if (nums[0] > 100 || nums[1] > 100 || nums[2] > 100) return null;
+  return nums;
+}
+
+board.addEventListener("pointerdown", function (event) {
+  dragging = true;
+  board.setPointerCapture(event.pointerId);
+  placeFromPointer(event);
+});
+
+board.addEventListener("pointermove", function (event) {
+  if (!dragging) return;
+  placeFromPointer(event);
+});
+
+board.addEventListener("pointerup", function () {
+  dragging = false;
+});
+
+board.addEventListener("pointercancel", function () {
+  dragging = false;
+});
+
+document.getElementById("copy").addEventListener("click", function () {
+  var button = document.getElementById("copy");
+  share.focus();
+  share.select();
+  var done = function () {
+    button.textContent = "copied";
+    setTimeout(function () { button.textContent = "copy link"; }, 1200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(share.value).then(done, function () {
+      document.execCommand("copy");
+      done();
+    });
+  } else {
+    document.execCommand("copy");
+    done();
+  }
+});
+
+show(readMix() || [34, 33, 33]);
+</script>
+
+</body>
+</html>
